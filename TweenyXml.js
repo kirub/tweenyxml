@@ -206,6 +206,7 @@ var entweedler = function() {
 						if(this.trimTWElements)
 						{
 							var passageElementAttributes = passageElement.attributes
+							var passageElementText = passageElement.innerHTML
 							passageElement = document.createElement(passageElement.tagName.slice(3))
 							for(var key in passageElementAttributes) {
 								if(passageElementAttributes[key].name && passageElementAttributes[key].value)
@@ -213,6 +214,7 @@ var entweedler = function() {
 									passageElement.setAttribute(passageElementAttributes[key].name, passageElementAttributes[key].value)
 								}
 							}
+							passageElement.appendChild(document.createTextNode(passageElementText))
 						}
 						result.push(passageElement.outerHTML)
 					}

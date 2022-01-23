@@ -1,0 +1,15 @@
+{
+	"name": "tweenyxml",
+	"version": "1.0.1",
+	"description": "tweenyxml",
+	"main": "TweenyXml.js",
+	"author": "kirub",
+	"license": "MIT",
+	"dependencies": {
+		"html-minifier": "^4.0.0",
+		"uglify-js": "^3.14.5"
+	},
+	"scripts": {
+		"build": "node build.js"
+	}
+}

@@ -14,7 +14,6 @@ var storyFormat = {
 let fs = require('fs')
 let uglifier = require('uglify-js')
 let minifier = require('html-minifier')
-let formatter = require('xml-formatter');
 
 let script = fs.readFileSync('./TweenyXml.js').toString()
 let page = fs.readFileSync('./template.html').toString()

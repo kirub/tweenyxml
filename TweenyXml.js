@@ -1,11 +1,11 @@
-var prettifyXml = function(sourceXml)
+var prettifyXml = function(xmlDoc)
 {
-    var xmlDoc = new DOMParser().parseFromString(sourceXml, 'application/xml');
     var xsltDoc = new DOMParser().parseFromString([
         // describes how we want to modify the XML - indent everything
-        '<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform">',
+        '<?xml version="1.0" encoding="UTF-8"?>',
+		'<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform">',
         '  <xsl:strip-space elements="*"/>',
-        '  <xsl:template match="para[content-style][not(text())]">', // change to just text() to strip space in text nodes
+        '  <xsl:template match="text()">', // change to just text() to strip space in text nodes
         '    <xsl:value-of select="normalize-space(.)"/>',
         '  </xsl:template>',
         '  <xsl:template match="node()|@*">',
@@ -22,6 +22,11 @@ var prettifyXml = function(sourceXml)
     return resultXml;
 };
 
+var prettifyXmlFromString = function(sourceXml)
+{
+    var xmlDoc = new DOMParser().parseFromString(sourceXml, 'application/xml');
+	return prettifyXml(xmlDoc)
+};
 var entweedler = function() {
 
 	if (typeof(window.Entweedle) == "undefined") {
@@ -36,16 +41,10 @@ var entweedler = function() {
 				if (window.Entweedle.converted)
 					return
 				
-				window.Entweedle.converted = true
+				window.Entweedle.converted = true				
 				
 				var output = window.document.getElementById("output")
-				
-				var xmlAsText = this.export().trim();
-				//var debug = []
-				//debug.push()
-				//var debugText = document.createTextNode(debug.join(''))
-				//output.appendChild(debugText)
-				var xmlAsText = document.createTextNode(prettifyXml(xmlAsText))
+				var xmlAsText = document.createTextNode(prettifyXml(this.export()))
 				output.appendChild(xmlAsText)
 			},
 
@@ -53,6 +52,7 @@ var entweedler = function() {
 			export: function() {
 				var buffer = []
 
+				this.debug.push('=export=')				
 				var storyDataInfo = {}
 				var properties = {}
 				var storyData = window.document.getElementsByTagName("tw-storydata")[0]
@@ -83,88 +83,140 @@ var entweedler = function() {
 						properties["tag-colors"] = tagColors
 					}
 				}
-
-				/*
-				var userScript = window.document.getElementById("twine-user-script")
-				if (userScript)
-					buffer.push(this.buildPassage("UserScript","script",userScript.innerHTML))
-
-				var userStylesheet = window.document.getElementById("twine-user-stylesheet")
-				if (userStylesheet)
-					buffer.push(this.buildPassage("UserStylesheet","stylesheet",userStylesheet.innerHTML))
-				*/
 				
 				var passages = Array.from(window.document.getElementsByTagName("tw-passagedata"));
 				storyDataInfo["size"] = passages.length
-				buffer.push(this.startStoryDocument(storyDataInfo))
-					buffer.push(this.buildTwineTag(properties))
-					buffer.push(this.buildPassages(passages))
-				buffer.push(this.endStoryDocument())
+				var xmlDoc = this.createXmlDocument(storyDataInfo)
+					this.buildTwineElement(xmlDoc, properties)
+					this.buildPassages(xmlDoc, passages)
 
-				return buffer.join('')
+				return xmlDoc
 			},			
 			
-			startStoryDocument: function(storyData) {
-				var result = []		
-									
-				result.push("<");
-				if(!this.trimTWElements)
-				{
-					result.push("tw-")					
-				}
-				result.push("story")
+			createXmlDocument: function(storyData) {
+				
+				var storyElementName = (this.trimTWElements) ? "story" : "tw-story"				
+				var xmlDoc = document.implementation.createDocument(null, storyElementName)
+				var storyElement = xmlDoc.documentElement
+				
 				for (let a in storyData)
-					this.pushAttribute(result, a, storyData[a])	
-				result.push(">")
-				return result.join('')
-			},
-			
-			endStoryDocument: function() {
-				var result = []		
-									
-				result.push("</")				
-				if(!this.trimTWElements)
-				{
-					result.push("tw-")					
-				}
-				result.push("story>")
-				return result.join('')
+					storyElement.setAttribute(a, storyData[a])
+				
+				return xmlDoc
 			},
 			
 			pushAttribute: function(buffer, key, value) {
 				buffer.push(" ", key, "=\"", value, "\"")		
 			},
 			
-			buildTwineTag: function(twineData) {
-				var result = []		
+			buildTwineElement: function(xmlDoc, twineData) {
 						
-				result.push("<")				
-				if(!this.trimTWElements)
-				{
-					result.push("tw-")					
-				}
-				result.push("twine")
-				for (let a in twineData)
-					this.pushAttribute(result, a, twineData[a])
-				result.push("/>")
+				var rootNode = xmlDoc.documentElement
 				
-				return result.join('')
+				var twineElementName = (this.trimTWElements) ? "twine" : "tw-twine"
+				var twineElement = xmlDoc.createElement(twineElementName)
+				
+				for (let a in twineData)
+					twineElement.setAttribute(a, twineData[a])
+				
+				rootNode.appendChild(twineElement)
+				
+				return twineElement
 			},
 			
-			extractPassagesLinks: function(passageData, remove)
+			buildPassageElement: function(xmlDoc, passagesData, currentPassageIdx)
 			{
-				var passageText = passageData.textContent
-				var re = /\[\[(.*)\]\]/gm
-				var passageLinksNames = passageText.match(re);
-				if(passageLinksNames)
+				var rootNode = xmlDoc.documentElement
+				var ogPassageElement = passagesData[currentPassageIdx]
+				var passageText = ogPassageElement.textContent.trim()
+				var passageElementName = (this.trimTWElements) ? ogPassageElement.tagName.slice(3) : ogPassageElement.tagName
+				var passageElement = xmlDoc.createElement(passageElementName.toLowerCase())
+				
+				for (var key in ogPassageElement.attributes)
 				{
-					passageLinksNames.trimElements(2, -2)
-					if(remove)
+					if(ogPassageElement.attributes[key].name && ogPassageElement.attributes[key].value)
 					{
-						passageData.textContent = passageText.replace(re, "").trim()	
+						passageElement.setAttribute(ogPassageElement.attributes[key].name, ogPassageElement.attributes[key].value)
 					}
 				}
-				return {"links": passageLinksNames, "element": passageData}
+													
+				var regexp = /\[{2}(.*?)(?:\|(.*?))?(?:->(.*?))?\]{2}/gm				
+				var passageLinks = passageText.matchAll(regexp)
+				var debugElement = window.document.getElementById("debug")	
+				if( passageLinks )
+				{					
+					var arrayFromMatches = Array.from(passageLinks)
+					var noChoice = arrayFromMatches.length == 1 && !arrayFromMatches[0][2]
+					
+					for (var key in arrayFromMatches)
+					{
+						if(arrayFromMatches[key])
+						{
+							if(noChoice)
+							{
+								var passageLinkID = this.passageLinkPIDFromTitle(passagesData, arrayFromMatches[key][1])
+								if(passageLinkID)
+								{
+									passageElement.setAttribute("next",passageLinkID)
+								}
+								else
+								{
+									// Dead end?
+								}
+							}
+							else
+							{
+								var choiceElementTextNode = null								
+								var link = arrayFromMatches[key][1]
+								if(arrayFromMatches[key][2]) // means it is a named link
+								{				
+									link = arrayFromMatches[key][2]
+									choiceElementTextNode = xmlDoc.createTextNode(arrayFromMatches[key][1]) // we keep first capture as the text node
+								}
+								var passageLinkID = this.passageLinkPIDFromTitle(passagesData, link)
+								
+								if(passageLinkID)
+								{
+									var choiceElement = xmlDoc.createElement("choice")
+									choiceElement.setAttribute("next", passageLinkID)
+									if(choiceElementTextNode)
+									{
+										choiceElement.appendChild(choiceElementTextNode) // we keep first capture as the text node
+									}
+									passageElement.appendChild(choiceElement)
+								}									
+							}
+						}
+					}
+					
+					var passageTextContent = passageText.replace(regexp, "").trim();
+					if(passageTextContent.length > 0)
+					{
+						var passageTextElement = xmlDoc.createElement("text")
+						passageTextElement.appendChild(xmlDoc.createTextNode(passageTextContent))
+						passageElement.appendChild(passageTextElement)
+					}
+				}
+
+				rootNode.appendChild(passageElement)
+				debugElement.innerHTML = debugArray.join('')
+				return passageElement
+			},
+			
+			passageLinkPIDFromTitle: function(passagesData, passageLinkName)
+			{
+				var passagePid = null				
+				for (var j = 0; j < passagesData.length; ++j)
+				{
+					var passageElement = passagesData[j]
+					var passageName = passageElement.getAttribute("name")
+					if(passageLinkName == passageName )
+					{
+						passagePid = passageElement.getAttribute("pid")
+						break;
+					}
+				}
+				return passagePid;
 			},
 			
 			passageLinksPIDFromTitles: function(passagesData, passageLinksNames)
@@ -172,55 +224,23 @@ var entweedler = function() {
 				var passageLinksPID = []
 				for (var i = 0; i < passageLinksNames.length; ++i)
 				{
-					var passagePid = null
 					var linkName = passageLinksNames[i]
-					
-					for (var j = 0; j < passagesData.length; ++j)
-					{
-						var passageElement = passagesData[j]
-						var passageName = passageElement.getAttribute("name")
-						if(linkName == passageName )
-						{
-							var pid = passageElement.getAttribute("pid")
-							passageLinksPID.push(pid)
-							break;
-						}
-					}
+					passageLinksPID.push(this.passageLinkPIDFromTitle(passagesData, linkName))
 				}
 				return passageLinksPID;
 			},
 			
-			buildPassages: function(passagesData) {
-				var result = []
+			buildPassages: function(xmlDoc, passagesData) {
+				var passageElements = []
 				if(passagesData)
 				{
 					for (var i = 0; i < passagesData.length; ++i)
 					{				
-						var passageElement = passagesData[i]
-						var extractObject = this.extractPassagesLinks(passageElement, true)
-						passageElement = extractObject.element
-						if(extractObject.links)
-						{
-							passageElement.setAttribute("next", this.passageLinksPIDFromTitles(passagesData, extractObject.links))
-						}
-						if(this.trimTWElements)
-						{
-							var passageElementAttributes = passageElement.attributes
-							var passageElementText = passageElement.innerHTML
-							passageElement = document.createElement(passageElement.tagName.slice(3))
-							for(var key in passageElementAttributes) {
-								if(passageElementAttributes[key].name && passageElementAttributes[key].value)
-								{
-									passageElement.setAttribute(passageElementAttributes[key].name, passageElementAttributes[key].value)
-								}
-							}
-							passageElement.appendChild(document.createTextNode(passageElementText))
-						}
-						result.push(passageElement.outerHTML)
+						passageElements.push(this.buildPassageElement(xmlDoc, passagesData, i))
 					}
 				}		
 				
-				return result.join('')
+				return passageElements
 			},
 			
 			scrub: function(content) {
